@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>피싱브레이크 | 금융사기 판별 어시스턴트</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="eyebrow">AI 금융사기 판별 어시스턴트</div>
+      <div class="logo-mark">PB</div>
+      <h1>피싱<span class="accent">브레이크</span></h1>
+      <p class="subtitle">받은 문자·통화 내용을 붙여넣으면, 위험 신호를 분석하고 다음 행동을 안내해 드립니다.</p>
+    </header>
+
+    <div class="content-row">
+      <main class="panel">
+        <div class="sample-buttons" id="sampleButtons">
+          <span class="sample-label">샘플로 먼저 체험해보기</span>
+          <!-- 버튼은 JS가 /api/samples 응답으로 채움 -->
+        </div>
+
+        <div id="inputPanel">
+          <textarea id="inputText" placeholder="받은 문자, 카카오톡 대화, 통화 내용을 여기에 붙여넣으세요..."></textarea>
+
+          <label for="imageFile" class="image-drop-zone" id="imageDropZone">
+            <span id="imageDropLabel">대화 스크린샷을 첨부하면 함께 분석합니다 (선택) — 클릭 또는 끌어다 놓기</span>
+            <img id="imagePreview" class="hidden" alt="첨부한 스크린샷 미리보기">
+          </label>
+          <button type="button" id="removeImageBtn" class="hidden">이미지 제거</button>
+          <input type="file" id="imageFile" accept="image/jpeg,image/png,image/webp" class="hidden">
+
+          <button id="analyzeBtn">분석 시작하기</button>
+        </div>
+
+        <div id="loading" class="loading hidden">
+          <span class="spinner"></span>
+          <span>분석 중입니다... (5~15초 소요)</span>
+        </div>
+      </main>
+
+      <div id="result" class="result hidden"></div>
+    </div>
+
+    <footer class="page-footer">
+      <p>본 도구는 참고용 AI 분석 서비스이며, 최종 판단은 112(경찰) 또는 해당 금융기관 확인을 통해 이뤄져야 합니다.</p>
+    </footer>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
