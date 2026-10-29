@@ -95,7 +95,11 @@ footer{padding:10px 16px calc(14px + env(safe-area-inset-bottom));display:flex;f
   let segments = store.get('segments', []);   // {en, ko, t}
   let running = false, rec = null, wakeLock = null;
   let liveEl = null, liveTimer = null, liveText = '', lastLiveTranslated = '';
-  let stallTimer = null;
+  let stallTimer = null, restartTimer = null, fastFails = 0, lastError = '';
+  // In-app browsers (Claude, KakaoTalk, Instagram…) on iPhone don't get speech recognition. Safari does.
+  const ua = navigator.userAgent;
+  const inApp = /iPhone|iPad|iPod/.test(ua) && (!/Safari\//.test(ua) || /KAKAOTALK|Instagram|FBAN|FBAV|NAVER|Line\//i.test(ua));
+  const IN_APP_MSG = '앱 안의 브라우저에서는 음성 인식이 안 돼요. 오른쪽 아래 나침반(Safari) 버튼을 눌러 Safari에서 열어 주세요.';
 
   // ---------- settings ----------
   let koSize = store.get('koSize', 20);
@@ -202,11 +206,15 @@ footer{padding:10px 16px calc(14px + env(safe-area-inset-bottom));display:flex;f
     r.continuous = true;
     r.interimResults = true;
     r.maxAlternatives = 1;
-    let committedUpTo = 0;
-    let dead = false;        // set once we force-stop this instance, so late results are ignored   // index into event.results already committed (iOS keeps old results around)
+    let committedUpTo = 0;   // index into event.results already committed (iOS keeps old results around)
+    let dead = false;        // set once we force-stop this instance, so late results are ignored
+    let heard = false;       // did this instance produce anything?
+    const startedAt = Date.now();
 
     r.onresult = e => {
       if (dead) return;
+      heard = true; fastFails = 0;
+      setStatus('듣는 중… 다시 누르면 정지');
       let interim = '';
       for (let i = Math.max(e.resultIndex, committedUpTo); i < e.results.length; i++) {
         const res = e.results[i];
@@ -222,32 +230,59 @@ footer{padding:10px 16px calc(14px + env(safe-area-inset-bottom));display:flex;f
       }
     };
     r.onerror = e => {
+      lastError = e.error;
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-        setStatus('마이크 권한이 꺼져 있어요. 설정 › Safari › 마이크 에서 허용해 주세요.', true);
-        running = false; ui();
+        fail(inApp ? IN_APP_MSG : '마이크 또는 음성 인식 권한이 꺼져 있어요. 설정 › Safari › 마이크, 설정 › 개인정보 보호 › 음성 인식에서 허용해 주세요.');
+      } else if (e.error === 'audio-capture') {
+        fail('마이크를 쓸 수 없어요. 다른 앱(통화, 녹음)이 마이크를 쓰고 있지 않은지 확인하세요.');
       } else if (e.error === 'network') {
         setStatus('음성 인식 서버 연결 실패 — 인터넷을 확인하세요.', true);
       }
       // 'no-speech' / 'aborted' are normal: onend restarts
     };
+    r.onaudiostart = () => { if (!heard) setStatus('마이크 켜짐 · 말소리를 기다리는 중…'); };
     r.onend = () => {
       if (liveText) { const t = liveText; showLive(''); commit(t); }
-      if (running) setTimeout(() => { if (running) { rec = buildRec(); try { rec.start(); } catch {} } }, 150);
+      if (!running) return;
+      // Ended right away without hearing anything: back off instead of restarting in a tight loop.
+      if (!heard && Date.now() - startedAt < 1500) fastFails++;
+      if (fastFails >= 4) {
+        fail(inApp ? IN_APP_MSG : '음성 인식이 계속 바로 꺼져요' + (lastError ? ' (' + lastError + ')' : '') + '. Safari를 완전히 껐다가 다시 열어보세요.');
+        return;
+      }
+      const delay = fastFails ? Math.min(400 * 2 ** fastFails, 4000) : 100;
+      restartTimer = setTimeout(() => { if (running) { rec = buildRec(); try { rec.start(); } catch {} } }, delay);
     };
     return r;
   }
 
+  function fail(msg){
+    running = false; ui();
+    clearTimeout(stallTimer); clearTimeout(restartTimer);
+    try { rec && rec.abort(); } catch {}
+    setStatus(msg, true);
+  }
+
   async function start(){
-    if (!SR) { setStatus('이 브라우저는 음성 인식을 지원하지 않아요. iPhone은 Safari, 컴퓨터는 Chrome을 쓰세요.', true); return; }
-    running = true; ui();
-    setStatus('듣는 중… 다시 누르면 정지');
+    if (!SR) { setStatus(inApp ? IN_APP_MSG : '이 브라우저는 음성 인식을 지원하지 않아요. iPhone은 Safari, 컴퓨터는 Chrome을 쓰세요.', true); return; }
+    running = true; ui(); fastFails = 0; lastError = '';
+    setStatus('마이크 준비 중…');
+    // Ask for the mic first so iOS shows its permission prompt, then release it for speech recognition.
+    try {
+      const ms = await navigator.mediaDevices.getUserMedia({ audio: true });
+      ms.getTracks().forEach(t => t.stop());
+    } catch (e) {
+      fail(inApp ? IN_APP_MSG : '마이크 권한이 없어요. 주소창 왼쪽 "가가" › 웹사이트 설정 › 마이크 › 허용으로 바꿔 주세요.');
+      return;
+    }
+    if (!running) return;
     rec = buildRec();
     try { rec.start(); } catch {}
     try { wakeLock = await navigator.wakeLock?.request('screen'); } catch {}
   }
   function stop(){
     running = false; ui();
-    clearTimeout(stallTimer);
+    clearTimeout(stallTimer); clearTimeout(restartTimer);
     try { rec && rec.stop(); } catch {}
     try { wakeLock && wakeLock.release(); } catch {}
     wakeLock = null;
@@ -275,7 +310,8 @@ footer{padding:10px 16px calc(14px + env(safe-area-inset-bottom));display:flex;f
     segments = []; store.set('segments', []); renderAll(); $('empty').hidden = false;
   };
 
-  if (!SR) setStatus('이 브라우저는 음성 인식을 지원하지 않아요. iPhone은 Safari를 쓰세요.', true);
+  if (inApp) setStatus(IN_APP_MSG, true);
+  else if (!SR) setStatus('이 브라우저는 음성 인식을 지원하지 않아요. iPhone은 Safari를 쓰세요.', true);
 })();
 </script>
 </body>
