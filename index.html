@@ -163,7 +163,7 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
 
   const store = {
     get(k, d){ try{ const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); }catch{ return d; } },
-    set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} }
+    set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); return true; }catch{ return false; } }
   };
 
   // ---------- lectures (sessions) ----------
@@ -181,7 +181,9 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
   if (!data.sessions.some(s => s.id === data.current)) data.current = data.sessions[data.sessions.length - 1].id;
   const cur = () => data.sessions.find(s => s.id === data.current);
   let saveTimer = null;
-  const save = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => store.set('lt.v2', data), 300); };
+  const save = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => {
+    if (!store.set('lt.v2', data)) setStatus('저장 공간이 꽉 찼어요. 수업 목록에서 오래된 수업을 지워 주세요.', true);
+  }, 300); };
 
   // ---------- settings ----------
   let koSize = store.get('koSize', 20);
@@ -326,20 +328,27 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
     r.interimResults = true;
     r.maxAlternatives = 1;
     let committedUpTo = 0;   // index into event.results already committed (iOS keeps old results around)
+    const seen = [];         // transcripts of committed results, by index
     let consumed = 0;        // chars of the still-open text already sent as finished sentences
     let dead = false;
     let heard = false;
     const startedAt = Date.now();
 
     r.onresult = e => {
-      if (dead) return;
+      if (dead || rec !== r) return;
       heard = true; fastFails = 0;
       setStatus('듣는 중… 다시 누르면 정지');
+      // Safari sometimes starts its result list over mid-session: start counting from zero again.
+      // (A repeat of results we already have is not a restart; a different text at a committed slot is.)
+      const L = e.results.length;
+      if (L < committedUpTo || (L === committedUpTo && L > 0 && e.results[L - 1][0].transcript !== seen[L - 1])) {
+        committedUpTo = 0; consumed = 0; seen.length = 0;
+      }
       // Gather everything not yet committed; note where the finalized part ends.
       let text = '', finalEnd = 0, finalUpTo = committedUpTo, allFinal = true;
       for (let i = committedUpTo; i < e.results.length; i++) {
         text += e.results[i][0].transcript;
-        if (allFinal && e.results[i].isFinal) { finalEnd = text.length; finalUpTo = i + 1; } else allFinal = false;
+        if (allFinal && e.results[i].isFinal) { finalEnd = text.length; finalUpTo = i + 1; seen[i] = e.results[i][0].transcript; } else allFinal = false;
       }
       if (text.length < consumed) consumed = 0;          // recognizer replaced its guess wholesale
       if (finalEnd > 0) {
@@ -377,6 +386,7 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
     r.onend = () => {
       dead = true;
       clearTimeout(stallTimer);
+      if (rec !== r) return;              // an older instance; a newer one is already running
       if (liveText) { const t = liveText; showLive(''); commit(t); }
       if (!running) return;
       if (!heard && Date.now() - startedAt < 1500) fastFails++;
@@ -387,13 +397,21 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
       const delay = fastFails ? Math.min(400 * 2 ** fastFails, 4000) : 50;
       restartTimer = setTimeout(() => { if (running) { rec = buildRec(); try { rec.start(); } catch {} } }, delay);
     };
+    r.kill = () => { dead = true; clearTimeout(stallTimer); };
     return r;
+  }
+
+  // Put any half-heard sentence into the current lecture and detach the recognizer,
+  // so nothing arriving later lands in a different lecture.
+  function detach(){
+    if (rec) { rec.kill(); const old = rec; rec = null; try { old.stop(); } catch {} }
+    if (liveText) { const t = liveText; showLive(''); commit(t); }
   }
 
   function fail(msg){
     running = false; ui();
     clearTimeout(stallTimer); clearTimeout(restartTimer);
-    try { rec && rec.abort(); } catch {}
+    if (rec) { rec.kill(); try { rec.abort(); } catch {} rec = null; }
     setStatus(msg, true);
   }
   async function start(){
@@ -415,7 +433,7 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
   function stop(){
     running = false; ui();
     clearTimeout(stallTimer); clearTimeout(restartTimer);
-    try { rec && rec.stop(); } catch {}
+    detach();
     try { wakeLock && wakeLock.release(); } catch {}
     wakeLock = null;
     setStatus('정지됨 · 탭하여 다시 시작');
@@ -486,7 +504,7 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
     const w = e.target.closest('.w');
     if (!w) return;
     const word = w.textContent.replace(/^[^A-Za-z]+|[^A-Za-z'-]+$/g, '').replace(/'s$/i, '');
-    if (!word) return;
+    if (word.length < 2) return;
     const segEl = w.closest('.seg');
     const sentence = segEl.querySelector('.en').textContent;
     const sentenceKo = segEl.querySelector('.ko').textContent;
