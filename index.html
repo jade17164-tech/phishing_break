@@ -13,52 +13,93 @@
 <style>
 :root{
   --bg:#f7f4f2; --card:#ffffff; --fg:#1d1a19; --muted:#8a817d; --line:#ebe5e1;
-  --accent:#ec6b45; --accent2:#f2a65a; --live:#fff3ec;
+  --accent:#ec6b45; --accent2:#f2a65a; --live:#fff3ec; --mark:#ffe3d6; --err:#d23c2f;
+  --shade:rgba(20,14,12,.35);
   --font:"Noto Sans KR",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
   --ko-size:20px;
 }
 @media (prefers-color-scheme:dark){
-  :root{--bg:#161312;--card:#211d1b;--fg:#f3eeeb;--muted:#9c928d;--line:#2f2926;--live:#2c1f19;color-scheme:dark}
+  :root{--bg:#161312;--card:#211d1b;--fg:#f3eeeb;--muted:#9c928d;--line:#2f2926;--live:#2c1f19;--mark:#4a2a1d;--shade:rgba(0,0,0,.55);color-scheme:dark}
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--fg);font-family:var(--font);display:flex;flex-direction:column;
-  padding-top:env(safe-area-inset-top);-webkit-tap-highlight-color:transparent}
+  padding-top:env(safe-area-inset-top);-webkit-tap-highlight-color:transparent;word-break:keep-all}
+button{font:inherit;color:inherit}
 header{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
-  padding:12px max(16px,env(safe-area-inset-left)) 10px max(16px,env(safe-area-inset-right))}
-header h1{font-size:17px;margin:0 auto 0 0;font-weight:700;flex-basis:100%}
+  padding:12px max(16px,env(safe-area-inset-right)) 10px max(16px,env(safe-area-inset-left))}
+#title{flex-basis:100%;display:flex;align-items:baseline;gap:8px;background:none;border:none;padding:0;text-align:left;cursor:pointer;min-width:0}
+#title b{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#title small{color:var(--muted);font-size:12px;white-space:nowrap}
 .pill{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:999px;
-  padding:8px 12px;font:inherit;font-size:13px;cursor:pointer}
+  padding:8px 12px;font-size:13px;cursor:pointer}
 .pill[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+.pill.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.pill.danger{color:var(--err)}
 select.pill{appearance:none;-webkit-appearance:none}
 #feed{flex:1;overflow-y:auto;padding:4px max(16px,env(safe-area-inset-right)) 16px max(16px,env(safe-area-inset-left));
   display:flex;flex-direction:column;gap:10px;-webkit-overflow-scrolling:touch}
 .seg{background:var(--card);border-radius:16px;padding:12px 14px;border:1px solid var(--line)}
-.seg .en{color:var(--muted);font-size:14px;line-height:1.45;margin-bottom:4px}
+.seg .en{color:var(--muted);font-size:15px;line-height:1.55;margin-bottom:4px;word-break:normal}
+.seg .en .w{cursor:pointer;border-radius:4px}
+.seg .en .w:active,.seg .en .w.sel{background:var(--mark);color:var(--fg)}
 .seg .ko{font-size:var(--ko-size);line-height:1.5;font-weight:500}
 .seg .t{font-size:11px;color:var(--muted);margin-top:6px;font-variant-numeric:tabular-nums}
 .seg.live{background:var(--live);border-color:transparent}
 .seg.live .ko{color:var(--accent)}
 body.hide-en .seg .en{display:none}
-.empty{margin:auto;word-break:keep-all;text-align:center;color:var(--muted);max-width:320px;line-height:1.6;padding:24px 0}
+.empty{margin:auto;text-align:center;color:var(--muted);max-width:320px;line-height:1.6;padding:24px 0}
 .empty b{display:block;color:var(--fg);font-size:20px;margin-bottom:6px}
-footer{padding:10px 16px calc(14px + env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center;gap:6px;
-  border-top:1px solid var(--line);background:var(--bg)}
-#mic{width:72px;height:72px;border-radius:50%;border:none;cursor:pointer;
+footer{padding:10px max(16px,env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
+  display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:6px 12px;border-top:1px solid var(--line);background:var(--bg)}
+.side{display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:none;cursor:pointer;color:var(--muted);font-size:12px}
+.side svg{width:26px;height:26px;stroke:var(--fg);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#mic{width:68px;height:68px;border-radius:50%;border:none;cursor:pointer;
   background:conic-gradient(from 200deg,var(--accent),var(--accent2),var(--accent));
   display:grid;place-items:center;box-shadow:0 6px 20px rgba(236,107,69,.35)}
-#mic span{width:28px;height:28px;border-radius:50%;background:#fff;transition:all .2s}
-#mic.on span{border-radius:6px;width:24px;height:24px}
+#mic span{width:26px;height:26px;border-radius:50%;background:#fff;transition:all .2s}
+#mic.on span{border-radius:6px;width:22px;height:22px}
 #mic.on{animation:pulse 1.6s ease-in-out infinite}
 @keyframes pulse{50%{box-shadow:0 0 0 12px rgba(236,107,69,.15)}}
 @media (prefers-reduced-motion:reduce){#mic.on{animation:none}}
-#status{font-size:13px;color:var(--muted);min-height:18px;text-align:center}
-#status.err{color:#d23c2f}
+#status{grid-column:1/-1;font-size:13px;color:var(--muted);min-height:18px;text-align:center;line-height:1.4}
+#status.err{color:var(--err)}
+
+/* bottom sheets */
+#shade{position:fixed;inset:0;background:var(--shade);z-index:20}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:21;background:var(--bg);border-radius:20px 20px 0 0;
+  max-height:82%;display:flex;flex-direction:column;box-shadow:0 -8px 30px rgba(0,0,0,.15)}
+.sheet .head{display:flex;align-items:center;gap:8px;padding:14px max(16px,env(safe-area-inset-right)) 8px max(16px,env(safe-area-inset-left))}
+.sheet .head h2{font-size:17px;margin:0 auto 0 0}
+.sheet .body{overflow-y:auto;padding:4px max(16px,env(safe-area-inset-right)) calc(20px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
+  display:flex;flex-direction:column;gap:10px}
+.x{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--card);cursor:pointer;font-size:18px;line-height:1}
+.item{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px;cursor:pointer}
+.item.cur{border-color:var(--accent)}
+.item .grow{flex:1;min-width:0}
+.item b{display:block;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item small{color:var(--muted);font-size:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+input.field{width:100%;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:12px;padding:10px 12px;font:inherit;font-size:16px}
+.word h3{font-size:26px;margin:0}
+.word .main{font-size:20px;color:var(--accent);font-weight:700}
+.pos{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:6px}
+.word p{margin:2px 0;line-height:1.5}
+.ctx{background:var(--card);border-radius:12px;padding:10px 12px;font-size:14px;line-height:1.5;color:var(--muted)}
+.sec{font-size:13px;font-weight:700;color:var(--muted);margin-top:8px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 10px;font-size:13px;cursor:pointer}
+.chip span{color:var(--muted);margin-left:4px}
+.point{background:var(--card);border-radius:12px;padding:10px 12px;line-height:1.5}
+.point .ko{font-weight:500}
+.point .en{color:var(--muted);font-size:13px;margin-top:2px;word-break:normal}
+.note{font-size:12px;color:var(--muted);line-height:1.5}
 </style>
 </head>
 <body>
 <header>
-  <h1>수업 번역기</h1>
+  <button id="title" aria-label="수업 이름 바꾸기"><b id="titleText">수업</b><small id="titleMeta"></small></button>
   <select id="src" class="pill" aria-label="말하는 언어">
     <option value="en-US">🇺🇸 영어(미국)</option>
     <option value="en-GB">🇬🇧 영어(영국)</option>
@@ -69,17 +110,50 @@ footer{padding:10px 16px calc(14px + env(safe-area-inset-bottom));display:flex;f
   <button id="smaller" class="pill" aria-label="글자 작게">가-</button>
   <button id="bigger" class="pill" aria-label="글자 크게">가+</button>
   <button id="copy" class="pill">복사</button>
-  <button id="clear" class="pill">지우기</button>
 </header>
 
 <main id="feed">
-  <div class="empty" id="empty"><b>실시간 수업 번역</b>아래 버튼을 누르고 휴대폰을 교수님 쪽에 두세요. 영어로 들리는 말이 문장 단위로 한국어로 번역돼요. 크레딧 제한 없음.</div>
+  <div class="empty" id="empty"><b>실시간 수업 번역</b>아래 버튼을 누르고 휴대폰을 교수님 쪽에 두세요. 영어 문장이 한국어로 번역돼요.<br>모르는 영어 단어는 눌러서 뜻을 볼 수 있어요.</div>
 </main>
 
 <footer>
+  <button class="side" id="openSessions" aria-label="수업 목록">
+    <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>수업 목록
+  </button>
   <button id="mic" aria-label="시작/정지"><span></span></button>
+  <button class="side" id="openSummary" aria-label="요약">
+    <svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M9 11h7M9 15h7M9 7h3"/></svg>요약
+  </button>
   <div id="status">탭하여 시작</div>
 </footer>
+
+<div id="shade" hidden></div>
+
+<section class="sheet" id="sessionsSheet" hidden>
+  <div class="head"><h2>수업 목록</h2><button class="pill primary" id="newSession">+ 새 수업</button><button class="x" data-close aria-label="닫기">×</button></div>
+  <div class="body" id="sessionList"></div>
+</section>
+
+<section class="sheet" id="renameSheet" hidden>
+  <div class="head"><h2>수업 이름</h2><button class="x" data-close aria-label="닫기">×</button></div>
+  <div class="body">
+    <input class="field" id="renameInput" maxlength="40" placeholder="예: 생물학 101 · 3주차">
+    <div class="row">
+      <button class="pill primary" id="renameSave">저장</button>
+      <button class="pill danger" id="deleteSession">이 수업 삭제</button>
+    </div>
+  </div>
+</section>
+
+<section class="sheet" id="wordSheet" hidden>
+  <div class="head"><h2>단어 뜻</h2><button class="x" data-close aria-label="닫기">×</button></div>
+  <div class="body word" id="wordBody"></div>
+</section>
+
+<section class="sheet" id="summarySheet" hidden>
+  <div class="head"><h2>수업 요약</h2><button class="x" data-close aria-label="닫기">×</button></div>
+  <div class="body" id="summaryBody"></div>
+</section>
 
 <script>
 (() => {
@@ -92,14 +166,22 @@ footer{padding:10px 16px calc(14px + env(safe-area-inset-bottom));display:flex;f
     set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} }
   };
 
-  let segments = store.get('segments', []);   // {en, ko, t}
-  let running = false, rec = null, wakeLock = null;
-  let liveEl = null, liveTimer = null, liveText = '', lastLiveTranslated = '';
-  let stallTimer = null, restartTimer = null, fastFails = 0, lastError = '';
-  // In-app browsers (Claude, KakaoTalk, Instagram…) on iPhone don't get speech recognition. Safari does.
-  const ua = navigator.userAgent;
-  const inApp = /iPhone|iPad|iPod/.test(ua) && (!/Safari\//.test(ua) || /KAKAOTALK|Instagram|FBAN|FBAV|NAVER|Line\//i.test(ua));
-  const IN_APP_MSG = '앱 안의 브라우저에서는 음성 인식이 안 돼요. 오른쪽 아래 나침반(Safari) 버튼을 눌러 Safari에서 열어 주세요.';
+  // ---------- lectures (sessions) ----------
+  const fmtDate = t => new Date(t).toLocaleDateString('ko-KR', {month:'long', day:'numeric', weekday:'short'});
+  const fmtTime = t => new Date(t).toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  const newSession = () => ({ id: Date.now().toString(36), title: fmtDate(Date.now()) + ' 수업', created: Date.now(), segs: [], words: [] });
+
+  let data = store.get('lt.v2', null);
+  if (!data) {
+    data = { sessions: [], current: null };
+    const old = store.get('segments', []);
+    if (old.length) { const s = newSession(); s.title = '이전 기록'; s.created = old[0].t; s.segs = old; data.sessions.push(s); }
+  }
+  if (!data.sessions.length) data.sessions.push(newSession());
+  if (!data.sessions.some(s => s.id === data.current)) data.current = data.sessions[data.sessions.length - 1].id;
+  const cur = () => data.sessions.find(s => s.id === data.current);
+  let saveTimer = null;
+  const save = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => store.set('lt.v2', data), 300); };
 
   // ---------- settings ----------
   let koSize = store.get('koSize', 20);
@@ -117,32 +199,42 @@ footer{padding:10px 16px calc(14px + env(safe-area-inset-bottom));display:flex;f
   $('src').onchange = () => { store.set('src', $('src').value); if (running) { stop(); start(); } };
 
   // ---------- translation (free, no key) ----------
+  const GT = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ko';
   const cache = new Map();
+  async function fetchJson(url, ms){
+    const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), ms);
+    try { const r = await fetch(url, {signal: ctl.signal}); if (!r.ok) throw new Error(r.status); return await r.json(); }
+    finally { clearTimeout(tm); }
+  }
   async function translate(text){
     text = text.trim();
     if (!text) return '';
     if (cache.has(text)) return cache.get(text);
     let out = '';
     try {
-      const u = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ko&dt=t&q=' + encodeURIComponent(text);
-      const r = await fetch(u);
-      if (!r.ok) throw new Error(r.status);
-      const j = await r.json();
+      const j = await fetchJson(GT + '&dt=t&q=' + encodeURIComponent(text), 5000);
       out = j[0].map(p => p[0]).join('');
-    } catch (e) {
+    } catch {
       try {
-        const r = await fetch('https://api.mymemory.translated.net/get?langpair=en|ko&q=' + encodeURIComponent(text.slice(0, 480)));
-        const j = await r.json();
+        const j = await fetchJson('https://api.mymemory.translated.net/get?langpair=en|ko&q=' + encodeURIComponent(text.slice(0, 480)), 6000);
         out = j.responseData.translatedText;
-      } catch { out = '(번역 실패 — 인터넷 연결을 확인하세요)'; }
+      } catch { return '(번역 실패 — 인터넷 연결을 확인하세요)'; }
     }
     cache.set(text, out);
     return out;
   }
 
   // ---------- rendering ----------
-  const fmt = t => new Date(t).toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-  const nearBottom = () => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 120;
+  const segEls = new WeakMap();
+  const nearBottom = () => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 140;
+  function fillEn(el, text){
+    el.textContent = '';
+    // wrap each word so it can be tapped for its meaning
+    text.split(/(\s+)/).forEach(part => {
+      if (/[A-Za-z]/.test(part)) { const w = document.createElement('span'); w.className = 'w'; w.textContent = part; el.appendChild(w); }
+      else el.appendChild(document.createTextNode(part));
+    });
+  }
   function makeSeg(s, live){
     const d = document.createElement('div');
     d.className = 'seg' + (live ? ' live' : '');
@@ -151,42 +243,62 @@ footer{padding:10px 16px calc(14px + env(safe-area-inset-bottom));display:flex;f
     return d;
   }
   function fill(d, s){
-    d.querySelector('.en').textContent = s.en;
+    fillEn(d.querySelector('.en'), s.en);
     d.querySelector('.ko').textContent = s.ko || '…';
-    d.querySelector('.t').textContent = s.t ? fmt(s.t) : '듣는 중';
+    d.querySelector('.t').textContent = s.t ? fmtTime(s.t) : '듣는 중';
+  }
+  function renderHeader(){
+    const s = cur();
+    $('titleText').textContent = s.title;
+    $('titleMeta').textContent = s.segs.length ? `${s.segs.length}문장` : '';
   }
   function renderAll(){
     feed.querySelectorAll('.seg').forEach(n => n.remove());
-    $('empty').hidden = segments.length > 0;
-    segments.forEach(s => feed.appendChild(makeSeg(s)));
+    liveEl = null;
+    const s = cur();
+    $('empty').hidden = s.segs.length > 0;
+    s.segs.forEach(seg => { const el = makeSeg(seg); segEls.set(seg, el); feed.appendChild(el); });
     feed.scrollTop = feed.scrollHeight;
+    renderHeader();
   }
-  renderAll();
 
   async function commit(en){
-    en = en.trim();
+    en = en.replace(/\s+/g, ' ').trim();
     if (!en) return;
+    const sess = cur();
     const stick = nearBottom();
-    const s = { en, ko: '', t: Date.now() };
-    segments.push(s);
+    const last = sess.segs[sess.segs.length - 1];
+    let seg, el;
+    // A short fragment right after an unfinished sentence: glue it on instead of starting a new card.
+    if (last && Date.now() - last.t < 4000 && !/[.?!]["')]?$/.test(last.en) && last.en.length + en.length < 220 && segEls.get(last)) {
+      seg = last; seg.en += ' ' + en; seg.t = Date.now(); el = segEls.get(last);
+    } else {
+      seg = { en, ko: '', t: Date.now() };
+      sess.segs.push(seg);
+      el = makeSeg(seg); segEls.set(seg, el);
+      if (liveEl) feed.insertBefore(el, liveEl); else feed.appendChild(el);
+    }
+    fill(el, seg);
     $('empty').hidden = true;
-    const el = makeSeg(s);
-    if (liveEl) feed.insertBefore(el, liveEl); else feed.appendChild(el);
+    renderHeader();
     if (stick) feed.scrollTop = feed.scrollHeight;
-    s.ko = await translate(en);
-    fill(el, s);
-    store.set('segments', segments.slice(-500));
-    if (stick) feed.scrollTop = feed.scrollHeight;
+    const asked = seg.en;
+    const ko = await translate(asked);
+    if (seg.en !== asked) return;   // text grew while we waited; the newer request fills it
+    seg.ko = ko;
+    fill(el, seg);
+    save();
+    if (stick && nearBottom()) feed.scrollTop = feed.scrollHeight;
   }
 
+  let liveEl = null, liveTimer = null, liveText = '', lastLiveTranslated = '';
   function showLive(text){
     liveText = text;
     if (!text) { if (liveEl) { liveEl.remove(); liveEl = null; } return; }
     const stick = nearBottom();
     if (!liveEl) { liveEl = makeSeg({en:text}, true); feed.appendChild(liveEl); $('empty').hidden = true; }
-    liveEl.querySelector('.en').textContent = text;
+    fillEn(liveEl.querySelector('.en'), text);
     if (stick) feed.scrollTop = feed.scrollHeight;
-    // translate the in-progress sentence, debounced
     clearTimeout(liveTimer);
     liveTimer = setTimeout(async () => {
       const snap = liveText;
@@ -194,11 +306,18 @@ footer{padding:10px 16px calc(14px + env(safe-area-inset-bottom));display:flex;f
       lastLiveTranslated = snap;
       const ko = await translate(snap);
       if (liveEl && liveText === snap) liveEl.querySelector('.ko').textContent = ko;
-    }, 600);
+    }, 350);
   }
 
   // ---------- speech recognition ----------
   function setStatus(msg, err){ statusEl.textContent = msg; statusEl.classList.toggle('err', !!err); }
+
+  let running = false, rec = null, wakeLock = null;
+  let stallTimer = null, restartTimer = null, fastFails = 0, lastError = '';
+  // In-app browsers (Claude, KakaoTalk, Instagram…) on iPhone don't get speech recognition. Safari does.
+  const ua = navigator.userAgent;
+  const inApp = /iPhone|iPad|iPod/.test(ua) && (!/Safari\//.test(ua) || /KAKAOTALK|Instagram|FBAN|FBAV|NAVER|Line\//i.test(ua));
+  const IN_APP_MSG = '앱 안의 브라우저에서는 음성 인식이 안 돼요. 오른쪽 아래 나침반(Safari) 버튼을 눌러 Safari에서 열어 주세요.';
 
   function buildRec(){
     const r = new SR();
@@ -207,26 +326,41 @@ footer{padding:10px 16px calc(14px + env(safe-area-inset-bottom));display:flex;f
     r.interimResults = true;
     r.maxAlternatives = 1;
     let committedUpTo = 0;   // index into event.results already committed (iOS keeps old results around)
-    let dead = false;        // set once we force-stop this instance, so late results are ignored
-    let heard = false;       // did this instance produce anything?
+    let consumed = 0;        // chars of the still-open text already sent as finished sentences
+    let dead = false;
+    let heard = false;
     const startedAt = Date.now();
 
     r.onresult = e => {
       if (dead) return;
       heard = true; fastFails = 0;
       setStatus('듣는 중… 다시 누르면 정지');
-      let interim = '';
-      for (let i = Math.max(e.resultIndex, committedUpTo); i < e.results.length; i++) {
-        const res = e.results[i];
-        if (res.isFinal) { commit(res[0].transcript); committedUpTo = i + 1; showLive(''); }
-        else interim += res[0].transcript;
+      // Gather everything not yet committed; note where the finalized part ends.
+      let text = '', finalEnd = 0, finalUpTo = committedUpTo, allFinal = true;
+      for (let i = committedUpTo; i < e.results.length; i++) {
+        text += e.results[i][0].transcript;
+        if (allFinal && e.results[i].isFinal) { finalEnd = text.length; finalUpTo = i + 1; } else allFinal = false;
       }
-      showLive(interim.trim());
-      // Safari sometimes never marks a long run as final: force a cut on a pause or when it gets long.
+      if (text.length < consumed) consumed = 0;          // recognizer replaced its guess wholesale
+      if (finalEnd > 0) {
+        if (finalEnd > consumed) commit(text.slice(consumed, finalEnd));
+        consumed = Math.max(0, consumed - finalEnd);
+        committedUpTo = finalUpTo;
+        text = text.slice(finalEnd);
+      }
+      // Send finished sentences out as soon as they appear, instead of waiting for a pause.
+      let rest = text.slice(consumed);
+      const m = rest.match(/^([\s\S]*[.?!])\s+(?=\S)/);
+      if (m && m[1].trim().split(/\s+/).length >= 4) {
+        commit(m[1]); consumed += m[0].length; rest = text.slice(consumed);
+      }
+      rest = rest.trim();
+      showLive(rest);
       clearTimeout(stallTimer);
-      if (interim) {
-        const cut = () => { if (running && liveText) { dead = true; const t = liveText; showLive(''); commit(t); try { r.stop(); } catch {} } };
-        if (interim.length > 260) cut(); else stallTimer = setTimeout(cut, 1800);
+      if (rest) {
+        // A pause or a very long run without punctuation: cut it here.
+        const cut = () => { if (running && liveText === rest) { consumed = text.length; showLive(''); commit(rest); } };
+        if (rest.length > 220) cut(); else stallTimer = setTimeout(cut, 1500);
       }
     };
     r.onerror = e => {
@@ -238,19 +372,19 @@ footer{padding:10px 16px calc(14px + env(safe-area-inset-bottom));display:flex;f
       } else if (e.error === 'network') {
         setStatus('음성 인식 서버 연결 실패 — 인터넷을 확인하세요.', true);
       }
-      // 'no-speech' / 'aborted' are normal: onend restarts
     };
     r.onaudiostart = () => { if (!heard) setStatus('마이크 켜짐 · 말소리를 기다리는 중…'); };
     r.onend = () => {
+      dead = true;
+      clearTimeout(stallTimer);
       if (liveText) { const t = liveText; showLive(''); commit(t); }
       if (!running) return;
-      // Ended right away without hearing anything: back off instead of restarting in a tight loop.
       if (!heard && Date.now() - startedAt < 1500) fastFails++;
       if (fastFails >= 4) {
         fail(inApp ? IN_APP_MSG : '음성 인식이 계속 바로 꺼져요' + (lastError ? ' (' + lastError + ')' : '') + '. Safari를 완전히 껐다가 다시 열어보세요.');
         return;
       }
-      const delay = fastFails ? Math.min(400 * 2 ** fastFails, 4000) : 100;
+      const delay = fastFails ? Math.min(400 * 2 ** fastFails, 4000) : 50;
       restartTimer = setTimeout(() => { if (running) { rec = buildRec(); try { rec.start(); } catch {} } }, delay);
     };
     return r;
@@ -262,16 +396,14 @@ footer{padding:10px 16px calc(14px + env(safe-area-inset-bottom));display:flex;f
     try { rec && rec.abort(); } catch {}
     setStatus(msg, true);
   }
-
   async function start(){
     if (!SR) { setStatus(inApp ? IN_APP_MSG : '이 브라우저는 음성 인식을 지원하지 않아요. iPhone은 Safari, 컴퓨터는 Chrome을 쓰세요.', true); return; }
     running = true; ui(); fastFails = 0; lastError = '';
     setStatus('마이크 준비 중…');
-    // Ask for the mic first so iOS shows its permission prompt, then release it for speech recognition.
     try {
       const ms = await navigator.mediaDevices.getUserMedia({ audio: true });
       ms.getTracks().forEach(t => t.stop());
-    } catch (e) {
+    } catch {
       fail(inApp ? IN_APP_MSG : '마이크 권한이 없어요. 주소창 왼쪽 "가가" › 웹사이트 설정 › 마이크 › 허용으로 바꿔 주세요.');
       return;
     }
@@ -290,26 +422,152 @@ footer{padding:10px 16px calc(14px + env(safe-area-inset-bottom));display:flex;f
   }
   function ui(){ micBtn.classList.toggle('on', running); }
   micBtn.onclick = () => running ? stop() : start();
-
   document.addEventListener('visibilitychange', async () => {
-    if (document.visibilityState === 'visible' && running) {
-      try { wakeLock = await navigator.wakeLock?.request('screen'); } catch {}
-    }
+    if (document.visibilityState === 'visible' && running) { try { wakeLock = await navigator.wakeLock?.request('screen'); } catch {} }
   });
 
-  // ---------- tools ----------
-  $('copy').onclick = async () => {
-    const text = segments.map(s => `[${fmt(s.t)}]\n${s.en}\n${s.ko}`).join('\n\n');
-    try { await navigator.clipboard.writeText(text); setStatus('전체 내용을 복사했어요'); }
-    catch { setStatus('복사 실패', true); }
+  // ---------- sheets ----------
+  let openSheet = null;
+  function show(id){ hide(); openSheet = $(id); openSheet.hidden = false; $('shade').hidden = false; }
+  function hide(){
+    if (openSheet) openSheet.hidden = true;
+    openSheet = null; $('shade').hidden = true;
+    document.querySelectorAll('.w.sel').forEach(w => w.classList.remove('sel'));
+  }
+  $('shade').onclick = hide;
+  document.querySelectorAll('[data-close]').forEach(b => b.onclick = hide);
+  const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  // lectures list
+  function renderSessions(){
+    const list = $('sessionList'); list.innerHTML = '';
+    [...data.sessions].reverse().forEach(s => {
+      const it = document.createElement('div');
+      it.className = 'item' + (s.id === data.current ? ' cur' : '');
+      it.innerHTML = `<div class="grow"><b>${esc(s.title)}</b><small>${fmtDate(s.created)} · ${s.segs.length}문장 · 단어 ${s.words.length}개</small></div>`;
+      it.onclick = () => { if (running) stop(); data.current = s.id; save(); renderAll(); hide(); };
+      list.appendChild(it);
+    });
+  }
+  $('openSessions').onclick = () => { renderSessions(); show('sessionsSheet'); };
+  $('newSession').onclick = () => {
+    if (running) stop();
+    const s = newSession(); data.sessions.push(s); data.current = s.id; save(); renderAll(); hide();
+    setStatus('새 수업을 만들었어요 · 탭하여 시작');
   };
-  let clearArmed = false;
-  $('clear').onclick = () => {
-    if (!clearArmed) { clearArmed = true; $('clear').textContent = '정말 지울까요?'; setTimeout(() => { clearArmed = false; $('clear').textContent = '지우기'; }, 3000); return; }
-    clearArmed = false; $('clear').textContent = '지우기';
-    segments = []; store.set('segments', []); renderAll(); $('empty').hidden = false;
+  $('title').onclick = () => { $('renameInput').value = cur().title; show('renameSheet'); };
+  $('renameSave').onclick = () => { const v = $('renameInput').value.trim(); if (v) { cur().title = v; save(); renderHeader(); } hide(); };
+  $('renameInput').onkeydown = e => { if (e.key === 'Enter') $('renameSave').click(); };
+  let delArmed = false;
+  $('deleteSession').onclick = () => {
+    if (!delArmed) { delArmed = true; $('deleteSession').textContent = '한 번 더 누르면 삭제'; setTimeout(() => { delArmed = false; $('deleteSession').textContent = '이 수업 삭제'; }, 3000); return; }
+    delArmed = false; $('deleteSession').textContent = '이 수업 삭제';
+    if (running) stop();
+    data.sessions = data.sessions.filter(s => s.id !== data.current);
+    if (!data.sessions.length) data.sessions.push(newSession());
+    data.current = data.sessions[data.sessions.length - 1].id;
+    save(); renderAll(); hide();
   };
 
+  // word lookup
+  async function lookup(word){
+    const r = { word, ko: '', meanings: [], def: '' };
+    try {
+      const j = await fetchJson(GT + '&dt=t&dt=bd&dt=md&q=' + encodeURIComponent(word), 5000);
+      r.ko = (j[0] || []).map(p => p[0]).join('');
+      (j[1] || []).forEach(b => r.meanings.push({ pos: b[0], words: (b[1] || []).slice(0, 5) }));
+      const md = j[12] && j[12][0] && j[12][0][1] && j[12][0][1][0];
+      if (md) r.def = md[0];
+    } catch { r.ko = await translate(word); }
+    return r;
+  }
+  const POS = { noun:'명사', verb:'동사', adjective:'형용사', adverb:'부사', preposition:'전치사', conjunction:'접속사', pronoun:'대명사', interjection:'감탄사', abbreviation:'약어', phrase:'구' };
+  feed.addEventListener('click', async e => {
+    const w = e.target.closest('.w');
+    if (!w) return;
+    const word = w.textContent.replace(/^[^A-Za-z]+|[^A-Za-z'-]+$/g, '').replace(/'s$/i, '');
+    if (!word) return;
+    const segEl = w.closest('.seg');
+    const sentence = segEl.querySelector('.en').textContent;
+    const sentenceKo = segEl.querySelector('.ko').textContent;
+    show('wordSheet');
+    w.classList.add('sel');
+    $('wordBody').innerHTML = `<h3>${esc(word)}</h3><p class="note">찾는 중…</p>`;
+    const r = await lookup(word.toLowerCase() === word ? word : (word.length > 1 && word === word.toUpperCase() ? word : word.toLowerCase()));
+    if (openSheet !== $('wordSheet')) return;
+    const saved = cur().words.some(x => x.w.toLowerCase() === word.toLowerCase());
+    $('wordBody').innerHTML = `
+      <h3>${esc(word)}</h3>
+      <div class="main">${esc(r.ko || '-')}</div>
+      ${r.meanings.map(m => `<div class="pos">${esc(POS[m.pos] || m.pos)}</div><p>${esc(m.words.join(', '))}</p>`).join('')}
+      ${r.def ? `<div class="pos">영영 뜻</div><p>${esc(r.def)}</p>` : ''}
+      <div class="sec">수업에서 나온 문장</div>
+      <div class="ctx">${esc(sentence)}<br>${esc(sentenceKo)}</div>
+      <div class="row"><button class="pill ${saved ? '' : 'primary'}" id="saveWord">${saved ? '단어장에 있음 ✓' : '단어장에 저장'}</button></div>`;
+    $('saveWord').onclick = () => {
+      const list = cur().words;
+      const i = list.findIndex(x => x.w.toLowerCase() === word.toLowerCase());
+      if (i >= 0) { list.splice(i, 1); $('saveWord').textContent = '단어장에 저장'; $('saveWord').classList.add('primary'); }
+      else { list.push({ w: word, ko: r.ko, ctx: sentence }); $('saveWord').textContent = '단어장에 있음 ✓'; $('saveWord').classList.remove('primary'); }
+      save();
+    };
+  });
+
+  // summary: picks the sentences that carry the lecture's most repeated ideas (runs on the phone, no AI)
+  const STOP = new Set(('a an the and or but if then so to of in on at by for with from as is are was were be been being it its this that these those there here i you he she we they me him her us them my your our their what which who whom how why when where do does did done have has had having can could will would shall should may might must not no yes just very really also too than about into over under again more most some any all each other such only own same well like get got go going gonna wanna know think okay ok right um uh yeah so let lets let\'s one two thing things kind sort actually basically something way see say said look make made').split(' '));
+  const terms = s => (s.toLowerCase().match(/[a-z][a-z'-]+/g) || []).map(w => w.replace(/'s$/, '')).filter(w => w.length > 2 && !STOP.has(w));
+  function summarize(segs){
+    const freq = new Map();
+    segs.forEach(s => new Set(terms(s.en)).forEach(w => freq.set(w, (freq.get(w) || 0) + 1)));
+    const keywords = [...freq.entries()].filter(([w, n]) => n >= 2 && w.length > 3).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([w]) => w);
+    const scored = segs.map((s, i) => {
+      const t = terms(s.en);
+      const score = t.length < 4 ? 0 : t.reduce((a, w) => a + (freq.get(w) || 0), 0) / Math.sqrt(t.length);
+      return { i, score };
+    });
+    const n = Math.min(8, Math.max(3, Math.round(segs.length * 0.15)));
+    const picks = scored.filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, n).sort((a, b) => a.i - b.i).map(x => segs[x.i]);
+    return { keywords, picks };
+  }
+  $('openSummary').onclick = async () => {
+    const s = cur();
+    show('summarySheet');
+    const body = $('summaryBody');
+    if (s.segs.length < 3) { body.innerHTML = '<p class="note">아직 내용이 너무 적어요. 수업을 조금 더 들은 뒤에 눌러 주세요.</p>'; return; }
+    const { keywords, picks } = summarize(s.segs);
+    const mins = Math.max(1, Math.round((s.segs[s.segs.length - 1].t - s.segs[0].t) / 60000));
+    body.innerHTML = `
+      <p class="note">${esc(s.title)} · 약 ${mins}분 · ${s.segs.length}문장</p>
+      <div class="sec">핵심 단어</div><div class="chips" id="kw">${keywords.length ? '' : '<span class="note">반복된 단어가 아직 없어요</span>'}</div>
+      <div class="sec">중요한 문장</div>
+      ${picks.map(p => `<div class="point"><div class="ko">${esc(p.ko || '')}</div><div class="en">${esc(p.en)}</div></div>`).join('')}
+      <div class="sec">내 단어장 (${s.words.length})</div>
+      <div class="chips">${s.words.map(w => `<span class="chip">${esc(w.w)}<span>${esc(w.ko || '')}</span></span>`).join('') || '<span class="note">영어 단어를 눌러 저장하면 여기에 모여요</span>'}</div>
+      <div class="sec">더 자세한 요약</div>
+      <p class="note">위 요약은 휴대폰 안에서 자주 나온 단어를 기준으로 고른 거예요. 문단으로 정리된 요약이 필요하면 아래 버튼을 누르고 Claude 앱에 붙여넣으세요.</p>
+      <div class="row"><button class="pill primary" id="copyForAI">Claude 요약용으로 복사</button></div>`;
+    const kw = $('kw');
+    keywords.forEach(async w => {
+      const c = document.createElement('span'); c.className = 'chip'; c.textContent = w; kw.appendChild(c);
+      const ko = await translate(w); const sp = document.createElement('span'); sp.textContent = ko; c.appendChild(sp);
+    });
+    $('copyForAI').onclick = async () => {
+      const text = '다음은 영어 수업을 음성 인식으로 받아적은 내용이야. 인식 오류가 있을 수 있어. 한국어로 핵심 내용을 소주제별로 정리하고, 중요한 개념과 시험에 나올 만한 포인트, 모르면 안 되는 영어 용어를 뜻과 함께 알려줘.\n\n'
+        + s.segs.map(x => x.en).join('\n');
+      try { await navigator.clipboard.writeText(text); $('copyForAI').textContent = '복사됨 ✓ Claude에 붙여넣으세요'; }
+      catch { $('copyForAI').textContent = '복사 실패'; }
+    };
+  };
+
+  // copy whole lecture
+  $('copy').onclick = async () => {
+    const s = cur();
+    const text = s.title + '\n\n' + s.segs.map(x => `[${fmtTime(x.t)}]\n${x.en}\n${x.ko}`).join('\n\n');
+    try { await navigator.clipboard.writeText(text); setStatus('이 수업 전체 내용을 복사했어요'); }
+    catch { setStatus('복사 실패', true); }
+  };
+
+  renderAll();
   if (inApp) setStatus(IN_APP_MSG, true);
   else if (!SR) setStatus('이 브라우저는 음성 인식을 지원하지 않아요. iPhone은 Safari를 쓰세요.', true);
 })();
