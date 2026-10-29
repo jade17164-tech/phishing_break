@@ -80,6 +80,9 @@ footer{padding:10px max(16px,env(safe-area-inset-right)) calc(12px + env(safe-ar
 .item .grow{flex:1;min-width:0}
 .item b{display:block;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .item small{color:var(--muted);font-size:12px}
+.edit{flex:none;width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--bg);cursor:pointer;display:grid;place-items:center}
+.edit svg{width:18px;height:18px;stroke:var(--fg);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#title svg{width:15px;height:15px;stroke:var(--muted);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none;align-self:center}
 .row{display:flex;gap:8px;flex-wrap:wrap}
 input.field{width:100%;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:12px;padding:10px 12px;font:inherit;font-size:16px}
 .word h3{font-size:26px;margin:0}
@@ -99,7 +102,7 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
 </head>
 <body>
 <header>
-  <button id="title" aria-label="수업 이름 바꾸기"><b id="titleText">수업</b><small id="titleMeta"></small></button>
+  <button id="title" aria-label="수업 이름 바꾸기"><b id="titleText">수업</b><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg><small id="titleMeta"></small></button>
   <select id="src" class="pill" aria-label="말하는 언어">
     <option value="en-US">🇺🇸 영어(미국)</option>
     <option value="en-GB">🇬🇧 영어(영국)</option>
@@ -137,7 +140,8 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
 <section class="sheet" id="renameSheet" hidden>
   <div class="head"><h2>수업 이름</h2><button class="x" data-close aria-label="닫기">×</button></div>
   <div class="body">
-    <input class="field" id="renameInput" maxlength="40" placeholder="예: 생물학 101 · 3주차">
+    <input class="field" id="renameInput" maxlength="40" placeholder="예: 9주차 수업 · 세포 호흡">
+    <div class="chips" id="renameSuggest"></div>
     <div class="row">
       <button class="pill primary" id="renameSave">저장</button>
       <button class="pill danger" id="deleteSession">이 수업 삭제</button>
@@ -462,8 +466,9 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
     [...data.sessions].reverse().forEach(s => {
       const it = document.createElement('div');
       it.className = 'item' + (s.id === data.current ? ' cur' : '');
-      it.innerHTML = `<div class="grow"><b>${esc(s.title)}</b><small>${fmtDate(s.created)} · ${s.segs.length}문장 · 단어 ${s.words.length}개</small></div>`;
-      it.onclick = () => { if (running) stop(); data.current = s.id; save(); renderAll(); hide(); };
+      it.innerHTML = `<div class="grow"><b>${esc(s.title)}</b><small>${fmtDate(s.created)} · ${s.segs.length}문장 · 단어 ${s.words.length}개</small></div><button class="edit" aria-label="이름 바꾸기"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg></button>`;
+      it.onclick = () => { if (s.id !== data.current) { if (running) stop(); data.current = s.id; save(); renderAll(); } hide(); };
+      it.querySelector('.edit').onclick = e => { e.stopPropagation(); openRename(s.id, true); };
       list.appendChild(it);
     });
   }
@@ -473,18 +478,44 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
     const s = newSession(); data.sessions.push(s); data.current = s.id; save(); renderAll(); hide();
     setStatus('새 수업을 만들었어요 · 탭하여 시작');
   };
-  $('title').onclick = () => { $('renameInput').value = cur().title; show('renameSheet'); };
-  $('renameSave').onclick = () => { const v = $('renameInput').value.trim(); if (v) { cur().title = v; save(); renderHeader(); } hide(); };
+  // rename: works for any lecture, from the header (current one) or the pencil in the list
+  let editId = null, editFromList = false;
+  function openRename(id, fromList){
+    editId = id; editFromList = fromList;
+    const s = data.sessions.find(x => x.id === id);
+    $('renameInput').value = s.title;
+    // suggest the next week number, e.g. "9주차 수업" after "8주차 …"
+    const weeks = data.sessions.filter(x => x.id !== id).map(x => +((x.title.match(/(\d+)\s*주차/) || [])[1] || 0));
+    const next = Math.max(0, ...weeks) + 1;
+    const sug = $('renameSuggest'); sug.innerHTML = '';
+    [`${next}주차 수업`, `${fmtDate(s.created)} 수업`].forEach(t => {
+      const c = document.createElement('button'); c.className = 'chip'; c.textContent = t;
+      c.onclick = () => { $('renameInput').value = t; $('renameInput').focus(); };
+      sug.appendChild(c);
+    });
+    show('renameSheet');
+    // focus inside the tap itself: iPhone only raises the keyboard then
+    $('renameInput').focus(); $('renameInput').select();
+  }
+  const afterRename = () => { if (editFromList) { renderSessions(); show('sessionsSheet'); } else hide(); };
+  $('title').onclick = () => openRename(data.current, false);
+  $('renameSave').onclick = () => {
+    const v = $('renameInput').value.trim();
+    const s = data.sessions.find(x => x.id === editId);
+    if (v && s) { s.title = v; save(); renderHeader(); }
+    afterRename();
+  };
   $('renameInput').onkeydown = e => { if (e.key === 'Enter') $('renameSave').click(); };
   let delArmed = false;
   $('deleteSession').onclick = () => {
     if (!delArmed) { delArmed = true; $('deleteSession').textContent = '한 번 더 누르면 삭제'; setTimeout(() => { delArmed = false; $('deleteSession').textContent = '이 수업 삭제'; }, 3000); return; }
     delArmed = false; $('deleteSession').textContent = '이 수업 삭제';
-    if (running) stop();
-    data.sessions = data.sessions.filter(s => s.id !== data.current);
+    const wasCurrent = editId === data.current;
+    if (wasCurrent && running) stop();
+    data.sessions = data.sessions.filter(s => s.id !== editId);
     if (!data.sessions.length) data.sessions.push(newSession());
-    data.current = data.sessions[data.sessions.length - 1].id;
-    save(); renderAll(); hide();
+    if (wasCurrent || !data.sessions.some(s => s.id === data.current)) data.current = data.sessions[data.sessions.length - 1].id;
+    save(); renderAll(); afterRename();
   };
 
   // word lookup
