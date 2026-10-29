@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="수업 번역">
+<meta name="theme-color" content="#f7f4f2">
+<title>수업 번역기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+:root{
+  --bg:#f7f4f2; --card:#ffffff; --fg:#1d1a19; --muted:#8a817d; --line:#ebe5e1;
+  --accent:#ec6b45; --accent2:#f2a65a; --live:#fff3ec;
+  --font:"Noto Sans KR",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
+  --ko-size:20px;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#161312;--card:#211d1b;--fg:#f3eeeb;--muted:#9c928d;--line:#2f2926;--live:#2c1f19;color-scheme:dark}
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);display:flex;flex-direction:column;
+  padding-top:env(safe-area-inset-top);-webkit-tap-highlight-color:transparent}
+header{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  padding:12px max(16px,env(safe-area-inset-left)) 10px max(16px,env(safe-area-inset-right))}
+header h1{font-size:17px;margin:0 auto 0 0;font-weight:700;flex-basis:100%}
+.pill{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:999px;
+  padding:8px 12px;font:inherit;font-size:13px;cursor:pointer}
+.pill[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+select.pill{appearance:none;-webkit-appearance:none}
+#feed{flex:1;overflow-y:auto;padding:4px max(16px,env(safe-area-inset-right)) 16px max(16px,env(safe-area-inset-left));
+  display:flex;flex-direction:column;gap:10px;-webkit-overflow-scrolling:touch}
+.seg{background:var(--card);border-radius:16px;padding:12px 14px;border:1px solid var(--line)}
+.seg .en{color:var(--muted);font-size:14px;line-height:1.45;margin-bottom:4px}
+.seg .ko{font-size:var(--ko-size);line-height:1.5;font-weight:500}
+.seg .t{font-size:11px;color:var(--muted);margin-top:6px;font-variant-numeric:tabular-nums}
+.seg.live{background:var(--live);border-color:transparent}
+.seg.live .ko{color:var(--accent)}
+body.hide-en .seg .en{display:none}
+.empty{margin:auto;word-break:keep-all;text-align:center;color:var(--muted);max-width:320px;line-height:1.6;padding:24px 0}
+.empty b{display:block;color:var(--fg);font-size:20px;margin-bottom:6px}
+footer{padding:10px 16px calc(14px + env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center;gap:6px;
+  border-top:1px solid var(--line);background:var(--bg)}
+#mic{width:72px;height:72px;border-radius:50%;border:none;cursor:pointer;
+  background:conic-gradient(from 200deg,var(--accent),var(--accent2),var(--accent));
+  display:grid;place-items:center;box-shadow:0 6px 20px rgba(236,107,69,.35)}
+#mic span{width:28px;height:28px;border-radius:50%;background:#fff;transition:all .2s}
+#mic.on span{border-radius:6px;width:24px;height:24px}
+#mic.on{animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 12px rgba(236,107,69,.15)}}
+@media (prefers-reduced-motion:reduce){#mic.on{animation:none}}
+#status{font-size:13px;color:var(--muted);min-height:18px;text-align:center}
+#status.err{color:#d23c2f}
+</style>
+</head>
+<body>
+<header>
+  <h1>수업 번역기</h1>
+  <select id="src" class="pill" aria-label="말하는 언어">
+    <option value="en-US">🇺🇸 영어(미국)</option>
+    <option value="en-GB">🇬🇧 영어(영국)</option>
+    <option value="en-AU">🇦🇺 영어(호주)</option>
+    <option value="en-IN">🇮🇳 영어(인도)</option>
+  </select>
+  <button id="toggleEn" class="pill" aria-pressed="true">영어 원문</button>
+  <button id="smaller" class="pill" aria-label="글자 작게">가-</button>
+  <button id="bigger" class="pill" aria-label="글자 크게">가+</button>
+  <button id="copy" class="pill">복사</button>
+  <button id="clear" class="pill">지우기</button>
+</header>
+
+<main id="feed">
+  <div class="empty" id="empty"><b>실시간 수업 번역</b>아래 버튼을 누르고 휴대폰을 교수님 쪽에 두세요. 영어로 들리는 말이 문장 단위로 한국어로 번역돼요. 크레딧 제한 없음.</div>
+</main>
+
+<footer>
+  <button id="mic" aria-label="시작/정지"><span></span></button>
+  <div id="status">탭하여 시작</div>
+</footer>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const feed = $('feed'), statusEl = $('status'), micBtn = $('mic');
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  const store = {
+    get(k, d){ try{ const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); }catch{ return d; } },
+    set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} }
+  };
+
+  let segments = store.get('segments', []);   // {en, ko, t}
+  let running = false, rec = null, wakeLock = null;
+  let liveEl = null, liveTimer = null, liveText = '', lastLiveTranslated = '';
+  let stallTimer = null;
+
+  // ---------- settings ----------
+  let koSize = store.get('koSize', 20);
+  let showEn = store.get('showEn', true);
+  $('src').value = store.get('src', 'en-US');
+  const applySettings = () => {
+    document.documentElement.style.setProperty('--ko-size', koSize + 'px');
+    document.body.classList.toggle('hide-en', !showEn);
+    $('toggleEn').setAttribute('aria-pressed', showEn);
+  };
+  applySettings();
+  $('smaller').onclick = () => { koSize = Math.max(14, koSize - 2); store.set('koSize', koSize); applySettings(); };
+  $('bigger').onclick  = () => { koSize = Math.min(36, koSize + 2); store.set('koSize', koSize); applySettings(); };
+  $('toggleEn').onclick = () => { showEn = !showEn; store.set('showEn', showEn); applySettings(); };
+  $('src').onchange = () => { store.set('src', $('src').value); if (running) { stop(); start(); } };
+
+  // ---------- translation (free, no key) ----------
+  const cache = new Map();
+  async function translate(text){
+    text = text.trim();
+    if (!text) return '';
+    if (cache.has(text)) return cache.get(text);
+    let out = '';
+    try {
+      const u = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ko&dt=t&q=' + encodeURIComponent(text);
+      const r = await fetch(u);
+      if (!r.ok) throw new Error(r.status);
+      const j = await r.json();
+      out = j[0].map(p => p[0]).join('');
+    } catch (e) {
+      try {
+        const r = await fetch('https://api.mymemory.translated.net/get?langpair=en|ko&q=' + encodeURIComponent(text.slice(0, 480)));
+        const j = await r.json();
+        out = j.responseData.translatedText;
+      } catch { out = '(번역 실패 — 인터넷 연결을 확인하세요)'; }
+    }
+    cache.set(text, out);
+    return out;
+  }
+
+  // ---------- rendering ----------
+  const fmt = t => new Date(t).toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  const nearBottom = () => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 120;
+  function makeSeg(s, live){
+    const d = document.createElement('div');
+    d.className = 'seg' + (live ? ' live' : '');
+    d.innerHTML = '<div class="en"></div><div class="ko"></div><div class="t"></div>';
+    fill(d, s);
+    return d;
+  }
+  function fill(d, s){
+    d.querySelector('.en').textContent = s.en;
+    d.querySelector('.ko').textContent = s.ko || '…';
+    d.querySelector('.t').textContent = s.t ? fmt(s.t) : '듣는 중';
+  }
+  function renderAll(){
+    feed.querySelectorAll('.seg').forEach(n => n.remove());
+    $('empty').hidden = segments.length > 0;
+    segments.forEach(s => feed.appendChild(makeSeg(s)));
+    feed.scrollTop = feed.scrollHeight;
+  }
+  renderAll();
+
+  async function commit(en){
+    en = en.trim();
+    if (!en) return;
+    const stick = nearBottom();
+    const s = { en, ko: '', t: Date.now() };
+    segments.push(s);
+    $('empty').hidden = true;
+    const el = makeSeg(s);
+    if (liveEl) feed.insertBefore(el, liveEl); else feed.appendChild(el);
+    if (stick) feed.scrollTop = feed.scrollHeight;
+    s.ko = await translate(en);
+    fill(el, s);
+    store.set('segments', segments.slice(-500));
+    if (stick) feed.scrollTop = feed.scrollHeight;
+  }
+
+  function showLive(text){
+    liveText = text;
+    if (!text) { if (liveEl) { liveEl.remove(); liveEl = null; } return; }
+    const stick = nearBottom();
+    if (!liveEl) { liveEl = makeSeg({en:text}, true); feed.appendChild(liveEl); $('empty').hidden = true; }
+    liveEl.querySelector('.en').textContent = text;
+    if (stick) feed.scrollTop = feed.scrollHeight;
+    // translate the in-progress sentence, debounced
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(async () => {
+      const snap = liveText;
+      if (!snap || snap === lastLiveTranslated) return;
+      lastLiveTranslated = snap;
+      const ko = await translate(snap);
+      if (liveEl && liveText === snap) liveEl.querySelector('.ko').textContent = ko;
+    }, 600);
+  }
+
+  // ---------- speech recognition ----------
+  function setStatus(msg, err){ statusEl.textContent = msg; statusEl.classList.toggle('err', !!err); }
+
+  function buildRec(){
+    const r = new SR();
+    r.lang = $('src').value;
+    r.continuous = true;
+    r.interimResults = true;
+    r.maxAlternatives = 1;
+    let committedUpTo = 0;
+    let dead = false;        // set once we force-stop this instance, so late results are ignored   // index into event.results already committed (iOS keeps old results around)
+
+    r.onresult = e => {
+      if (dead) return;
+      let interim = '';
+      for (let i = Math.max(e.resultIndex, committedUpTo); i < e.results.length; i++) {
+        const res = e.results[i];
+        if (res.isFinal) { commit(res[0].transcript); committedUpTo = i + 1; showLive(''); }
+        else interim += res[0].transcript;
+      }
+      showLive(interim.trim());
+      // Safari sometimes never marks a long run as final: force a cut on a pause or when it gets long.
+      clearTimeout(stallTimer);
+      if (interim) {
+        const cut = () => { if (running && liveText) { dead = true; const t = liveText; showLive(''); commit(t); try { r.stop(); } catch {} } };
+        if (interim.length > 260) cut(); else stallTimer = setTimeout(cut, 1800);
+      }
+    };
+    r.onerror = e => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        setStatus('마이크 권한이 꺼져 있어요. 설정 › Safari › 마이크 에서 허용해 주세요.', true);
+        running = false; ui();
+      } else if (e.error === 'network') {
+        setStatus('음성 인식 서버 연결 실패 — 인터넷을 확인하세요.', true);
+      }
+      // 'no-speech' / 'aborted' are normal: onend restarts
+    };
+    r.onend = () => {
+      if (liveText) { const t = liveText; showLive(''); commit(t); }
+      if (running) setTimeout(() => { if (running) { rec = buildRec(); try { rec.start(); } catch {} } }, 150);
+    };
+    return r;
+  }
+
+  async function start(){
+    if (!SR) { setStatus('이 브라우저는 음성 인식을 지원하지 않아요. iPhone은 Safari, 컴퓨터는 Chrome을 쓰세요.', true); return; }
+    running = true; ui();
+    setStatus('듣는 중… 다시 누르면 정지');
+    rec = buildRec();
+    try { rec.start(); } catch {}
+    try { wakeLock = await navigator.wakeLock?.request('screen'); } catch {}
+  }
+  function stop(){
+    running = false; ui();
+    clearTimeout(stallTimer);
+    try { rec && rec.stop(); } catch {}
+    try { wakeLock && wakeLock.release(); } catch {}
+    wakeLock = null;
+    setStatus('정지됨 · 탭하여 다시 시작');
+  }
+  function ui(){ micBtn.classList.toggle('on', running); }
+  micBtn.onclick = () => running ? stop() : start();
+
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible' && running) {
+      try { wakeLock = await navigator.wakeLock?.request('screen'); } catch {}
+    }
+  });
+
+  // ---------- tools ----------
+  $('copy').onclick = async () => {
+    const text = segments.map(s => `[${fmt(s.t)}]\n${s.en}\n${s.ko}`).join('\n\n');
+    try { await navigator.clipboard.writeText(text); setStatus('전체 내용을 복사했어요'); }
+    catch { setStatus('복사 실패', true); }
+  };
+  let clearArmed = false;
+  $('clear').onclick = () => {
+    if (!clearArmed) { clearArmed = true; $('clear').textContent = '정말 지울까요?'; setTimeout(() => { clearArmed = false; $('clear').textContent = '지우기'; }, 3000); return; }
+    clearArmed = false; $('clear').textContent = '지우기';
+    segments = []; store.set('segments', []); renderAll(); $('empty').hidden = false;
+  };
+
+  if (!SR) setStatus('이 브라우저는 음성 인식을 지원하지 않아요. iPhone은 Safari를 쓰세요.', true);
+})();
+</script>
+</body>
+</html>
