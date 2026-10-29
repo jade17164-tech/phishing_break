@@ -134,7 +134,17 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
 
 <section class="sheet" id="sessionsSheet" hidden>
   <div class="head"><h2>수업 목록</h2><button class="pill primary" id="newSession">+ 새 수업</button><button class="x" data-close aria-label="닫기">×</button></div>
-  <div class="body" id="sessionList"></div>
+  <div class="body">
+    <div id="sessionList" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div class="sec">기록 백업</div>
+    <p class="note">기록은 이 휴대폰의 Safari 안에 저장돼요. 휴대폰을 바꾸거나, 홈 화면 앱으로 옮기거나, Safari 방문 기록을 지울 때를 대비해 가끔 백업 파일을 저장해 두세요.</p>
+    <div class="row">
+      <button class="pill" id="backupSave">백업 파일 저장</button>
+      <label class="pill" for="backupFile">백업 불러오기</label>
+      <input type="file" id="backupFile" accept=".json,application/json" hidden>
+    </div>
+    <p class="note" id="backupMsg"></p>
+  </div>
 </section>
 
 <section class="sheet" id="renameSheet" hidden>
@@ -144,6 +154,7 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
     <div class="chips" id="renameSuggest"></div>
     <div class="row">
       <button class="pill primary" id="renameSave">저장</button>
+      <button class="pill" id="rejoin">잘린 문장 합쳐서 다시 번역</button>
       <button class="pill danger" id="deleteSession">이 수업 삭제</button>
     </div>
   </div>
@@ -175,6 +186,7 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
   const fmtTime = t => new Date(t).toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
   const newSession = () => ({ id: Date.now().toString(36), title: fmtDate(Date.now()) + ' 수업', created: Date.now(), segs: [], words: [] });
 
+  // Records live under this key. Future versions must keep reading it (add fields, never rename or drop).
   let data = store.get('lt.v2', null);
   if (!data) {
     data = { sessions: [], current: null };
@@ -268,6 +280,25 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
     renderHeader();
   }
 
+  // iPhone rarely adds punctuation, so a pause often splits one sentence in two.
+  // A piece is "unfinished" if it ends on a word that needs something after it, or is very short.
+  const TAIL = new Set('a an the and or but so because if when while that which who whose where than then to of in on at by for with from into about as like is are was were be been am will would can could should must might may have has had do does did not my your his her its our their this these those very more most such some any every no just also'.split(' '));
+  const HEAD = new Set('and or but so because which who that where when while than to of in on at by for with from into as if then though although unless until'.split(' '));
+  const words = t => (t.toLowerCase().match(/[a-z']+/g) || []);
+  const ended = t => /[.?!]["')]?$/.test(t.trim());
+  // an opening like "At the beginning of…" or "When we heat it…" still needs its main clause
+  const LEAD = new Set('at in on after before during when whenever if because while although though since as once until unless whether by from with without for according'.split(' '));
+  const FILLER = /^(ok|okay|yes|yeah|yep|no|nope|right|alright|all right|so|um|uh|well|good|great|thank you|thanks|hi|hello)[.!?]?$/i;
+  function unfinished(t){
+    const w = words(t);
+    if (ended(t) || FILLER.test(t.trim())) return false;
+    return w.length < 6 || TAIL.has(w[w.length - 1]) || (LEAD.has(w[0]) && !t.includes(',') && w.length < 14);
+  }
+  function continues(t){ const w = words(t); return w.length > 0 && HEAD.has(w[0]); }
+  function shouldJoin(prev, next, gapMs){
+    return !ended(prev) && gapMs < 8000 && prev.length + next.length < 300 && (unfinished(prev) || continues(next));
+  }
+
   async function commit(en){
     en = en.replace(/\s+/g, ' ').trim();
     if (!en) return;
@@ -275,8 +306,8 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
     const stick = nearBottom();
     const last = sess.segs[sess.segs.length - 1];
     let seg, el;
-    // A short fragment right after an unfinished sentence: glue it on instead of starting a new card.
-    if (last && Date.now() - last.t < 4000 && !/[.?!]["')]?$/.test(last.en) && last.en.length + en.length < 220 && segEls.get(last)) {
+    // Glue a piece onto the previous card when the two are really one sentence, then translate the whole.
+    if (last && segEls.get(last) && shouldJoin(last.en, en, Date.now() - last.t)) {
       seg = last; seg.en += ' ' + en; seg.t = Date.now(); el = segEls.get(last);
     } else {
       seg = { en, ko: '', t: Date.now() };
@@ -373,7 +404,8 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
       if (rest) {
         // A pause or a very long run without punctuation: cut it here.
         const cut = () => { if (running && liveText === rest) { consumed = text.length; showLive(''); commit(rest); } };
-        if (rest.length > 220) cut(); else stallTimer = setTimeout(cut, 1500);
+        // wait a bit longer when only a few words are in, so a sentence isn't cut mid-way
+        if (rest.length > 280) cut(); else stallTimer = setTimeout(cut, words(rest).length < 4 ? 3000 : 2000);
       }
     };
     r.onerror = e => {
@@ -472,7 +504,33 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
       list.appendChild(it);
     });
   }
-  $('openSessions').onclick = () => { renderSessions(); show('sessionsSheet'); };
+  $('openSessions').onclick = () => { renderSessions(); $('backupMsg').textContent = ''; show('sessionsSheet'); };
+  // ask the browser not to clear our records when space is low
+  try { navigator.storage?.persist?.(); } catch {}
+  $('backupSave').onclick = () => {
+    const blob = new Blob([JSON.stringify({ app: 'lecture-translator', version: 2, saved: Date.now(), data })], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `lecture-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    $('backupMsg').textContent = '백업 파일(lecture-backup-날짜.json)을 만들었어요. "파일" 앱의 다운로드 폴더에서 찾을 수 있어요.';
+  };
+  $('backupFile').onchange = async () => {
+    const f = $('backupFile').files[0]; $('backupFile').value = '';
+    if (!f) return;
+    try {
+      const j = JSON.parse(await f.text());
+      const incoming = (j.data && j.data.sessions) || [];
+      if (!incoming.length) throw new Error();
+      // merge: add lectures we don't have, never overwrite what's already here
+      const have = new Set(data.sessions.map(x => x.id));
+      const added = incoming.filter(x => x && x.id && Array.isArray(x.segs) && !have.has(x.id)).map(x => ({ words: [], ...x }));
+      data.sessions.push(...added); data.sessions.sort((a, b) => a.created - b.created);
+      save(); renderSessions();
+      $('backupMsg').textContent = added.length ? `수업 ${added.length}개를 불러왔어요.` : '이미 다 있는 수업이라 새로 추가된 게 없어요.';
+    } catch { $('backupMsg').textContent = '이 파일은 수업 번역기 백업 파일이 아니에요.'; }
+  };
   $('newSession').onclick = () => {
     if (running) stop();
     const s = newSession(); data.sessions.push(s); data.current = s.id; save(); renderAll(); hide();
@@ -497,6 +555,27 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
     // focus inside the tap itself: iPhone only raises the keyboard then
     $('renameInput').focus(); $('renameInput').select();
   }
+  $('rejoin').onclick = async () => {
+    const s = data.sessions.find(x => x.id === editId);
+    if (!s || !s.segs.length) return;
+    const btn = $('rejoin'); btn.disabled = true;
+    const out = [];
+    for (const seg of s.segs) {
+      const prev = out[out.length - 1];
+      if (prev && shouldJoin(prev.en, seg.en, seg.t - prev.t)) { prev.en += ' ' + seg.en; prev.t = seg.t; prev.ko = ''; }
+      else out.push({ ...seg });
+    }
+    let done = 0;
+    for (const seg of out) {
+      if (!seg.ko) seg.ko = await translate(seg.en);
+      btn.textContent = `다시 번역 중… ${++done}/${out.length}`;
+    }
+    const before = s.segs.length;
+    s.segs = out; save();
+    if (s.id === data.current) renderAll();
+    btn.disabled = false; btn.textContent = `완료: ${before}개 → ${out.length}개 문장`;
+    setTimeout(() => { btn.textContent = '잘린 문장 합쳐서 다시 번역'; }, 4000);
+  };
   const afterRename = () => { if (editFromList) { renderSessions(); show('sessionsSheet'); } else hide(); };
   $('title').onclick = () => openRename(data.current, false);
   $('renameSave').onclick = () => {
