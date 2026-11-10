@@ -182,6 +182,18 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
       <button class="pill" id="engineOff">구글 번역으로 되돌리기</button>
     </div>
     <p class="note" id="engineMsg"></p>
+    <div class="sec">음성 인식 방식</div>
+    <div class="row">
+      <button class="pill" id="modeCont" aria-pressed="true">연속 듣기</button>
+      <button class="pill" id="modePhrase" aria-pressed="false">문장 단위</button>
+    </div>
+    <p class="note">영어 받아쓰기가 이상하면 다른 방식으로 바꿔서 같은 영상으로 비교해 보세요. 문장 단위는 말이 끊길 때마다 문장을 확정해서 더 깔끔할 수 있지만, 아주 빠르게 이어지는 말은 앞부분을 조금 놓칠 수 있어요.</p>
+    <div class="sec">인식 진단 기록</div>
+    <p class="note" id="diagInfo">아이폰이 실제로 보낸 받아쓰기 조각을 기록해요. 이상한 문장이 나오면 복사해서 Claude에게 보여주세요. 번역 키 같은 비밀 정보는 들어 있지 않아요.</p>
+    <div class="row">
+      <button class="pill" id="diagCopy">진단 기록 복사</button>
+      <button class="pill" id="diagClear">기록 비우기</button>
+    </div>
     <p class="note">말하는 중인 미리보기는 계속 구글로 번역하고, 문장이 확정되면 DeepL이 앞 문장을 참고해서 다시 번역해요. 무료 한도(위에 보이는 이번 달 사용량)를 넘으면 자동으로 구글 번역으로 바뀌고 돈은 나가지 않아요.</p>
   </div>
 </section>
@@ -449,16 +461,31 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
     return !ended(prev) && gapMs < 8000 && prev.length + next.length < 300 && (unfinished(prev) || continues(next));
   }
 
+  // Join two recognizer pieces. Safari sometimes repeats the last word(s) of one piece at the start
+  // of the next ("a powerful" + "Powerful impact"), and may leave out the space between them.
+  const normW = w => w.toLowerCase().replace(/[^a-z0-9']/g, '');
+  function joinPieces(a, b){
+    if (!a.trim()) return b;
+    if (!b.trim()) return a;
+    const aw = a.trim().split(/\s+/), bw = b.trim().split(/\s+/);
+    for (let k = Math.min(3, aw.length, bw.length); k >= 1; k--) {
+      const tail = aw.slice(-k).map(normW).join(' '), head = bw.slice(0, k).map(normW).join(' ');
+      if (tail && tail === head) { bw.splice(0, k); break; }
+    }
+    return bw.length ? a.replace(/\s+$/, '') + ' ' + bw.join(' ') : a;
+  }
+
   async function commit(en){
     en = en.replace(/\s+/g, ' ').trim();
     if (!en) return;
+    logDiag({ ev: 'commit', c: en });
     const sess = cur();
     const stick = nearBottom();
     const last = sess.segs[sess.segs.length - 1];
     let seg, el;
     // Glue a piece onto the previous card when the two are really one sentence, then translate the whole.
     if (last && segEls.get(last) && shouldJoin(last.en, en, Date.now() - last.t)) {
-      seg = last; seg.en += ' ' + en; seg.t = Date.now(); el = segEls.get(last);
+      seg = last; seg.en = joinPieces(seg.en, en); seg.t = Date.now(); el = segEls.get(last);
     } else {
       seg = { en, ko: '', t: Date.now() };
       sess.segs.push(seg);
@@ -506,10 +533,34 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
   const inApp = /iPhone|iPad|iPod/.test(ua) && (!/Safari\//.test(ua) || /KAKAOTALK|Instagram|FBAN|FBAV|NAVER|Line\//i.test(ua));
   const IN_APP_MSG = '앱 안의 브라우저에서는 음성 인식이 안 돼요. 오른쪽 아래 나침반(Safari) 버튼을 눌러 Safari에서 열어 주세요.';
 
+  let srMode = store.get('srMode', 'continuous');
+  // Raw recognizer output, newest last, so a strange transcript can be traced to what Safari actually sent.
+  let diag = store.get('diag', []);
+  let diagTimer = null;
+  function logDiag(entry){
+    diag.push({ t: Date.now() % 1e7, ...entry });
+    if (diag.length > 400) diag = diag.slice(-400);
+    clearTimeout(diagTimer); diagTimer = setTimeout(() => store.set('diag', diag), 1000);
+  }
+  function renderMode(){
+    $('modeCont').setAttribute('aria-pressed', srMode !== 'phrase');
+    $('modePhrase').setAttribute('aria-pressed', srMode === 'phrase');
+  }
+  renderMode();
+  const setMode = m => { srMode = m; store.set('srMode', m); renderMode(); logDiag({ ev: 'mode', m }); if (running) { stop(); start(); } };
+  $('modeCont').onclick = () => setMode('continuous');
+  $('modePhrase').onclick = () => setMode('phrase');
+  $('diagCopy').onclick = async () => {
+    const text = '[수업 번역기 진단 기록] ' + navigator.userAgent + '\n' + (diag.length ? diag.map(d => JSON.stringify(d)).join('\n') : '(기록 없음)');
+    try { await navigator.clipboard.writeText(text); $('diagCopy').textContent = `복사됨 ✓ (${diag.length}줄)`; }
+    catch { $('diagCopy').textContent = '복사 실패'; }
+  };
+  $('diagClear').onclick = () => { diag = []; store.set('diag', []); $('diagCopy').textContent = '진단 기록 복사'; $('diagClear').textContent = '비웠어요 ✓'; };
+
   function buildRec(){
     const r = new SR();
     r.lang = $('src').value;
-    r.continuous = true;
+    r.continuous = srMode !== 'phrase';
     r.interimResults = true;
     r.maxAlternatives = 1;
     let committedUpTo = 0;   // index into event.results already committed (iOS keeps old results around)
@@ -522,6 +573,8 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
     r.onresult = e => {
       if (dead || rec !== r) return;
       heard = true; fastFails = 0;
+      logDiag({ ev: 'res', ri: e.resultIndex, n: e.results.length,
+        r: Array.from(e.results).slice(Math.max(0, committedUpTo - 1)).map(x => [x[0].transcript, x.isFinal ? 1 : 0]) });
       setStatus('듣는 중… 다시 누르면 정지');
       // Safari sometimes starts its result list over mid-session: start counting from zero again.
       // (A repeat of results we already have is not a restart; a different text at a committed slot is.)
@@ -532,7 +585,7 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
       // Gather everything not yet committed; note where the finalized part ends.
       let text = '', finalEnd = 0, finalUpTo = committedUpTo, allFinal = true;
       for (let i = committedUpTo; i < e.results.length; i++) {
-        text += e.results[i][0].transcript;
+        text = joinPieces(text, e.results[i][0].transcript);
         if (allFinal && e.results[i].isFinal) { finalEnd = text.length; finalUpTo = i + 1; seen[i] = e.results[i][0].transcript; } else allFinal = false;
       }
       if (text.length < consumed) consumed = 0;          // recognizer replaced its guess wholesale
@@ -560,6 +613,7 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
     };
     r.onerror = e => {
       lastError = e.error;
+      logDiag({ ev: 'err', e: e.error });
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
         fail(inApp ? IN_APP_MSG : '마이크 또는 음성 인식 권한이 꺼져 있어요. 설정 › Safari › 마이크, 설정 › 개인정보 보호 › 음성 인식에서 허용해 주세요.');
       } else if (e.error === 'audio-capture') {
@@ -570,6 +624,7 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
     };
     r.onaudiostart = () => { if (!heard) setStatus('마이크 켜짐 · 말소리를 기다리는 중…'); };
     r.onend = () => {
+      logDiag({ ev: 'end', heard });
       dead = true;
       clearTimeout(stallTimer);
       if (rec !== r) return;              // an older instance; a newer one is already running
@@ -580,7 +635,7 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
         fail(inApp ? IN_APP_MSG : '음성 인식이 계속 바로 꺼져요' + (lastError ? ' (' + lastError + ')' : '') + '. Safari를 완전히 껐다가 다시 열어보세요.');
         return;
       }
-      const delay = fastFails ? Math.min(400 * 2 ** fastFails, 4000) : 50;
+      const delay = fastFails ? Math.min(400 * 2 ** fastFails, 4000) : (srMode === 'phrase' ? 0 : 50);
       restartTimer = setTimeout(() => { if (running) { rec = buildRec(); try { rec.start(); } catch {} } }, delay);
     };
     r.kill = () => { dead = true; clearTimeout(stallTimer); };
@@ -613,6 +668,7 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
     }
     if (!running) return;
     rec = buildRec();
+    logDiag({ ev: 'start', m: srMode, lang: rec.lang });
     try { rec.start(); } catch {}
     try { wakeLock = await navigator.wakeLock?.request('screen'); } catch {}
   }
@@ -712,7 +768,7 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
     const out = [];
     for (const seg of s.segs) {
       const prev = out[out.length - 1];
-      if (prev && shouldJoin(prev.en, seg.en, seg.t - prev.t)) { prev.en += ' ' + seg.en; prev.t = seg.t; prev.ko = ''; }
+      if (prev && shouldJoin(prev.en, seg.en, seg.t - prev.t)) { prev.en = joinPieces(prev.en, seg.en); prev.t = seg.t; prev.ko = ''; }
       else out.push({ ...seg });
     }
     // with DeepL connected, redo every sentence not already from DeepL so old lectures get the better translation too
