@@ -257,15 +257,25 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
     try { const r = await fetch(url, {signal: ctl.signal}); if (!r.ok) throw new Error(r.status); return await r.json(); }
     finally { clearTimeout(tm); }
   }
-  async function translate(text){
+  // Google answers "too many requests" when called a lot; when it fails, leave it alone for a while.
+  let gtCooldownUntil = 0;
+  const googleBusy = () => Date.now() < gtCooldownUntil;
+  async function google(params){
+    if (googleBusy()) throw new Error('cooldown');
+    try { return await fetchJson(GT + params, 5000); }
+    catch (e) { gtCooldownUntil = Date.now() + 45000; throw e; }
+  }
+  // memory: false skips MyMemory, whose single-word answers are often unrelated ("adjust" → "저를").
+  async function translate(text, { memory = true } = {}){
     text = text.trim();
     if (!text) return '';
     if (cache.has(text)) return cache.get(text);
     let out = '';
     try {
-      const j = await fetchJson(GT + '&dt=t&q=' + encodeURIComponent(text), 5000);
+      const j = await google('&dt=t&q=' + encodeURIComponent(text));
       out = j[0].map(p => p[0]).join('');
     } catch {
+      if (!memory) return '';
       try {
         const j = await fetchJson('https://api.mymemory.translated.net/get?langpair=en|ko&q=' + encodeURIComponent(text.slice(0, 480)), 6000);
         out = j.responseData.translatedText;
@@ -516,11 +526,11 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
     clearTimeout(liveTimer);
     liveTimer = setTimeout(async () => {
       const snap = liveText;
-      if (!snap || snap === lastLiveTranslated) return;
+      if (!snap || snap === lastLiveTranslated || googleBusy()) return;
       lastLiveTranslated = snap;
       const ko = await translate(snap);
-      if (liveEl && liveText === snap) liveEl.querySelector('.ko').textContent = ko;
-    }, 350);
+      if (ko && liveEl && liveText === snap) liveEl.querySelector('.ko').textContent = ko;
+    }, 700);
   }
 
   // ---------- speech recognition ----------
@@ -805,15 +815,29 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
   };
 
   // word lookup
-  async function lookup(word){
-    const r = { word, ko: '', meanings: [], def: '' };
-    try {
-      const j = await fetchJson(GT + '&dt=t&dt=bd&dt=md&q=' + encodeURIComponent(word), 5000);
-      r.ko = (j[0] || []).map(p => p[0]).join('');
-      (j[1] || []).forEach(b => r.meanings.push({ pos: b[0], words: (b[1] || []).slice(0, 5) }));
-      const md = j[12] && j[12][0] && j[12][0][1] && j[12][0][1][0];
-      if (md) r.def = md[0];
-    } catch { r.ko = await translate(word); }
+  // Meaning of a tapped word: DeepL reads the sentence it came from (so "adjust my glasses" gives the
+  // right sense), Google's dictionary adds parts of speech when it is reachable.
+  async function lookup(word, sentence){
+    const r = { word, ko: '', inContext: '', meanings: [], def: '' };
+    const dict = (async () => {
+      try {
+        const j = await google('&dt=t&dt=bd&dt=md&q=' + encodeURIComponent(word));
+        r.ko = (j[0] || []).map(p => p[0]).join('');
+        (j[1] || []).forEach(b => r.meanings.push({ pos: b[0], words: (b[1] || []).slice(0, 5) }));
+        const md = j[12] && j[12][0] && j[12][0][1] && j[12][0][1][0];
+        if (md) r.def = md[0];
+      } catch {}
+    })();
+    const inCtx = (async () => {
+      if (!deeplUrl || deeplDown) return;
+      const k = 'word\u0000' + sentence + '\u0000' + word;
+      if (dlCache.has(k)) { r.inContext = dlCache.get(k); return; }
+      try {
+        const j = await deeplRetry({ text: [word], context: sentence });
+        r.inContext = j.translations[0].text; dlCache.set(k, r.inContext);
+      } catch (e) { deeplFailed(e); }
+    })();
+    await Promise.all([dict, inCtx]);
     return r;
   }
   const POS = { noun:'명사', verb:'동사', adjective:'형용사', adverb:'부사', preposition:'전치사', conjunction:'접속사', pronoun:'대명사', interjection:'감탄사', abbreviation:'약어', phrase:'구' };
@@ -828,12 +852,15 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
     show('wordSheet');
     w.classList.add('sel');
     $('wordBody').innerHTML = `<h3>${esc(word)}</h3><p class="note">찾는 중…</p>`;
-    const r = await lookup(word.toLowerCase() === word ? word : (word.length > 1 && word === word.toUpperCase() ? word : word.toLowerCase()));
+    const r = await lookup(word.toLowerCase() === word ? word : (word.length > 1 && word === word.toUpperCase() ? word : word.toLowerCase()), sentence);
     if (openSheet !== $('wordSheet')) return;
+    const main = r.inContext || r.ko;
     const saved = cur().words.some(x => x.w.toLowerCase() === word.toLowerCase());
     $('wordBody').innerHTML = `
       <h3>${esc(word)}</h3>
-      <div class="main">${esc(r.ko || '-')}</div>
+      <div class="main">${main ? esc(main) : '뜻을 가져오지 못했어요'}</div>
+      ${r.inContext ? '<p class="note">이 문장에서의 뜻 (DeepL)</p>' : ''}
+      ${!main ? '<p class="note">번역 서버가 잠깐 바빠요. 30초쯤 뒤에 다시 눌러 주세요.</p>' : ''}
       ${r.meanings.map(m => `<div class="pos">${esc(POS[m.pos] || m.pos)}</div><p>${esc(m.words.join(', '))}</p>`).join('')}
       ${r.def ? `<div class="pos">영영 뜻</div><p>${esc(r.def)}</p>` : ''}
       <div class="sec">수업에서 나온 문장</div>
@@ -843,7 +870,7 @@ input.field{width:100%;border:1px solid var(--line);background:var(--card);color
       const list = cur().words;
       const i = list.findIndex(x => x.w.toLowerCase() === word.toLowerCase());
       if (i >= 0) { list.splice(i, 1); $('saveWord').textContent = '단어장에 저장'; $('saveWord').classList.add('primary'); }
-      else { list.push({ w: word, ko: r.ko, ctx: sentence }); $('saveWord').textContent = '단어장에 있음 ✓'; $('saveWord').classList.remove('primary'); }
+      else { list.push({ w: word, ko: main, ctx: sentence }); $('saveWord').textContent = '단어장에 있음 ✓'; $('saveWord').classList.remove('primary'); }
       save();
     };
   });
